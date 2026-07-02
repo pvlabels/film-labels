@@ -343,8 +343,20 @@
     pvRun.textContent = runIn.value.trim() || "—";
     pvDie.textContent = dieIn.value.trim() || "—";
     pvNotes.textContent = notesIn.value || "";
+    fitNotesPreview();
+  }
+  // Shrink the preview notes text until it fits its box, mirroring the PDF.
+  function fitNotesPreview() {
+    let size = 13;                       // matches the CSS default
+    pvNotes.style.fontSize = size + "px";
+    let guard = 0;
+    while (pvNotes.scrollHeight > pvNotes.clientHeight && size > 6 && guard++ < 60) {
+      size -= 0.5;
+      pvNotes.style.fontSize = size + "px";
+    }
   }
   [runIn, dieIn, notesIn].forEach(el => el.addEventListener("input", refreshPreview));
+  window.addEventListener("resize", fitNotesPreview);
 
   // ---------- queue rendering ----------
   function renderQueue() {
@@ -566,12 +578,21 @@
         x: PAD, y: bodyBottom, width: W - PAD * 2, height: bodyTop - bodyBottom,
         borderColor: BLACK, borderWidth: 1
       });
-      // Notes text — wrap manually
-      const noteSize = 12, lineH = 15, innerW = W - PAD * 2 - 12;
-      const lines = wrapText(bold, lab.notes || "", noteSize, innerW);
-      let ty = bodyTop - 6 - noteSize;
+      // Notes text — auto-fit: start at 12pt and shrink until every wrapped
+      // line fits inside the box (both width and height). Down to a 5pt floor.
+      const innerW = W - PAD * 2 - 12;
+      const topPad = 6, botPad = 4, LHF = 1.25;            // line-height factor
+      const usableH = (bodyTop - bodyBottom) - topPad - botPad;
+      let noteSize = 12;
+      let lines = wrapText(bold, lab.notes || "", noteSize, innerW);
+      while (noteSize > 5 && lines.length * noteSize * LHF > usableH) {
+        noteSize -= 0.5;
+        lines = wrapText(bold, lab.notes || "", noteSize, innerW);
+      }
+      const lineH = noteSize * LHF;
+      let ty = bodyTop - topPad - noteSize;
       for (const ln of lines) {
-        if (ty < bodyBottom + 4) break;
+        if (ty < bodyBottom + botPad - 1) break;           // safety clip at 5pt floor
         page.drawText(ln, { x: PAD + 6, y: ty, size: noteSize, font: bold, color: BLACK });
         ty -= lineH;
       }
