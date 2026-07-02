@@ -315,6 +315,29 @@
   const addBtn = $("addBtn"), updateBtn = $("updateBtn");
   const printBtn = $("printBtn"), pdfBtn = $("pdfBtn");
 
+  // ---------- persistence (shared across tabs) ----------
+  // The queue is stored in localStorage so that each "Print" link clicked from
+  // the Google Sheet — which opens a new tab — appends to ONE shared queue.
+  // A `storage` listener keeps every open tab in sync live.
+  const LS_KEY = "filmFolderLabelQueue";
+  function saveQueue() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(queue)); } catch (e) {}
+  }
+  function loadQueue() {
+    try {
+      const s = localStorage.getItem(LS_KEY);
+      const arr = s ? JSON.parse(s) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  const qKey = q => `${(q.run||"").trim()}|${(q.die||"").trim()}|${(q.notes||"").trim()}`;
+  window.addEventListener("storage", e => {
+    if (e.key !== LS_KEY) return;      // another tab changed the queue
+    queue = loadQueue();
+    if (editIndex >= queue.length) resetForm();
+    renderQueue();                     // note: no saveQueue() here, or tabs would loop
+  });
+
   // ---------- live preview ----------
   function refreshPreview() {
     pvRun.textContent = runIn.value.trim() || "—";
@@ -361,7 +384,7 @@
     queue.splice(i, 1);
     if (editIndex === i) resetForm();
     else if (editIndex > i) editIndex--;
-    renderQueue();
+    renderQueue(); saveQueue();
   }
 
   function currentFields() {
@@ -387,7 +410,7 @@
       return;
     }
     queue.push(f);
-    resetForm(); renderQueue();
+    resetForm(); renderQueue(); saveQueue();
     setStatus("fieldStatus", `Added. ${queue.length} label${queue.length === 1 ? "" : "s"} queued.`, "ok");
   });
 
@@ -395,13 +418,13 @@
     if (editIndex < 0) return;
     queue[editIndex] = currentFields();
     setStatus("fieldStatus", `Saved label ${editIndex + 1}.`, "ok");
-    resetForm(); renderQueue();
+    resetForm(); renderQueue(); saveQueue();
   });
 
   $("clearFields").addEventListener("click", () => { resetForm(); setStatus("fieldStatus", ""); });
 
   $("resetBtn").addEventListener("click", () => {
-    queue = []; resetForm(); renderQueue();
+    queue = []; resetForm(); renderQueue(); saveQueue();
     setStatus("fieldStatus", ""); setStatus("sheetStatus", ""); setStatus("outStatus", "");
     $("sheetUrl").value = "";
   });
@@ -441,7 +464,7 @@
       const rows = parseCSV(text);
       const added = rowsToLabels(rows);
       if (added === 0) throw new Error("No data rows found.");
-      renderQueue();
+      renderQueue(); saveQueue();
       setStatus("sheetStatus", `Loaded ${added} row${added === 1 ? "" : "s"} into the queue.`, "ok");
     } catch (err) {
       console.error(err);
@@ -670,16 +693,23 @@
     const p = new URLSearchParams(location.search);
     const hasData = ["run", "die", "notes"].some(k => p.has(k));
     if (!hasData) return false;
-    const run = (p.get("run") || "").trim();
-    const die = (p.get("die") || "").trim();
-    const notes = (p.get("notes") || "").replace(/\r/g, "");
-    queue.push({ run, die, notes });
+    const item = {
+      run: (p.get("run") || "").trim(),
+      die: (p.get("die") || "").trim(),
+      notes: (p.get("notes") || "").replace(/\r/g, "")
+    };
+    // Append to the shared queue, skipping an exact duplicate (e.g. on refresh).
+    const existingIdx = queue.findIndex(q => qKey(q) === qKey(item));
+    const isNew = existingIdx === -1;
+    if (isNew) { queue.push(item); saveQueue(); }
     renderQueue();
-    loadIntoForm(queue.length - 1);
-    setStatus("fieldStatus", "Loaded from Google Sheet — ready to print.", "ok");
+    loadIntoForm(isNew ? queue.length - 1 : existingIdx);
+    setStatus("fieldStatus",
+      `${isNew ? "Added to queue" : "Already in queue"} — ${queue.length} label${queue.length === 1 ? "" : "s"} ready. Click more Print links, then hit Print Labels.`,
+      "ok");
+    // Optional: ?autoprint=1 still fires the print dialog for anyone who wants it.
     if (p.get("autoprint") === "1" || p.get("print") === "1") {
       const go = () => { if (!printBtn.disabled) printBtn.click(); };
-      // wait until pdf-lib is available, then trigger the print flow
       let tries = 0;
       (function wait() {
         if (window.PDFLib) return setTimeout(go, 250);
@@ -691,6 +721,7 @@
   }
 
   // ---------- init ----------
+  queue = loadQueue();      // restore any queue already built up in this browser
   refreshPreview();
   renderQueue();
   applyDeepLink();
