@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Film Folder → 4×3 Label Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root {
+    --ink: #111418;
+    --paper: #f4f1ea;
+    --rule: #1a1d22;
+    --accent: #c8311c;
+    --muted: #6b6358;
+    --soft: #e8e2d5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(200,49,28,0.04), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(0,0,0,0.04), transparent 40%);
+    padding: 48px 24px 80px;
+  }
+  .frame {
+    max-width: 820px;
+    margin: 0 auto;
+    border: 2px solid var(--rule);
+    background: var(--paper);
+    padding: 40px 44px 48px;
+    position: relative;
+  }
+  .frame::before, .frame::after {
+    content: "";
+    position: absolute;
+    left: 12px; right: 12px;
+    height: 1px;
+    background: var(--rule);
+    opacity: 0.35;
+  }
+  .frame::before { top: 8px; }
+  .frame::after { bottom: 8px; }
+  .eyebrow {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.28em;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-family: 'Didot', 'Bodoni 72', 'Bodoni Moda', Georgia, serif;
+    font-weight: 400;
+    font-size: clamp(34px, 5vw, 52px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    margin-bottom: 14px;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .lede {
+    font-size: 17px;
+    color: var(--muted);
+    max-width: 62ch;
+    margin-bottom: 36px;
+    border-left: 2px solid var(--accent);
+    padding-left: 14px;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 18px;
+    align-items: start;
+    margin-bottom: 28px;
+  }
+  .step-num {
+    font-family: 'Didot', 'Bodoni 72', Georgia, serif;
+    font-size: 38px;
+    line-height: 1;
+    color: var(--accent);
+    border-top: 2px solid var(--rule);
+    padding-top: 6px;
+  }
+  .step-body > label {
+    display: block;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .hint {
+    font-weight: 400; text-transform: none; letter-spacing: 0;
+    color: var(--muted); font-family: 'Helvetica Neue', sans-serif;
+  }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  .field-label {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em;
+    color: var(--muted); font-weight: 600;
+  }
+  input[type="text"], textarea {
+    width: 100%;
+    padding: 11px 12px;
+    border: 1.5px solid var(--rule);
+    background: rgba(255,255,255,0.6);
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    color: var(--ink);
+    transition: border-color .15s, background .15s;
+    resize: vertical;
+  }
+  textarea { min-height: 74px; line-height: 1.4; }
+  input[type="text"]:focus, textarea:focus {
+    outline: none; border-color: var(--accent); background: white;
+  }
+  input::placeholder, textarea::placeholder { color: var(--muted); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .grow { flex: 1 1 260px; min-width: 200px; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 13px; text-transform: uppercase; letter-spacing: 0.18em;
+    font-weight: 700; padding: 14px 26px;
+    border: 2px solid var(--rule); background: var(--ink); color: var(--paper);
+    cursor: pointer; transition: transform .1s, background .15s;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--accent); border-color: var(--accent);
+    transform: translate(-1px, -1px); box-shadow: 3px 3px 0 var(--rule);
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--ink); }
+  .btn.small { padding: 11px 18px; font-size: 12px; }
+  .status { font-family: 'Helvetica Neue', sans-serif; font-size: 13px; color: var(--muted); }
+  .status.err { color: var(--accent); font-weight: 600; }
+  .status.ok { color: #2f7d32; font-weight: 600; }
+
+  /* Live label preview — mirrors the 4x3 template */
+  .preview-wrap { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+  .label {
+    width: 320px; aspect-ratio: 4 / 3;
+    background: #fff; border: 2px solid #000;
+    padding: 8px 10px; display: flex; flex-direction: column;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: #000;
+  }
+  .label .line {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 2px 2px 4px;
+  }
+  .label .tag { font-size: 15px; font-weight: 700; white-space: nowrap; }
+  .label .val { font-size: 26px; font-weight: 800; line-height: 1; }
+  .label .rule { border-bottom: 1.5px solid #000; }
+  .label .notes-head {
+    background: #000; color: #fff; text-align: center;
+    font-style: italic; font-weight: 700; font-size: 13px;
+    letter-spacing: 0.05em; padding: 3px 0; margin-top: 4px;
+  }
+  .label .notes-body {
+    border: 1.5px solid #000; border-top: none; flex: 1;
+    padding: 6px 8px; font-size: 13px; font-weight: 700;
+    white-space: pre-wrap; word-break: break-word; overflow: hidden;
+  }
+  .side { flex: 1 1 260px; min-width: 240px; }
+
+  /* Queue list */
+  .queue { list-style: none; padding: 0; }
+  .queue li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--rule);
+    background: rgba(255,255,255,0.5); margin-bottom: 8px;
+    font-family: 'Helvetica Neue', sans-serif; font-size: 13px;
+  }
+  .queue li.active { border-color: var(--accent); background: white; }
+  .queue .q-main { flex: 1; cursor: pointer; }
+  .queue .q-run { font-weight: 700; }
+  .queue .q-die { color: var(--muted); }
+  .queue .q-notes { color: var(--muted); font-style: italic; }
+  .queue-empty { color: var(--muted); font-style: italic; font-family: 'Helvetica Neue', sans-serif; font-size: 13px; }
+  .mini-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 15px; padding: 0 4px; font-family: 'Helvetica Neue', sans-serif;
+  }
+  .mini-btn:hover { color: var(--accent); }
+  .footnote {
+    margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--rule);
+    font-family: 'Helvetica Neue', sans-serif; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.2em; color: var(--muted);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  details.help { margin-top: 10px; font-family: 'Helvetica Neue', sans-serif; font-size: 13px; color: var(--muted); }
+  details.help summary { cursor: pointer; color: var(--accent); letter-spacing: 0.04em; }
+  details.help ol { margin: 8px 0 0 18px; }
+  details.help li { margin: 4px 0; }
+  code { font-family: 'Courier New', monospace; font-size: 12px; background: var(--soft); padding: 1px 4px; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="eyebrow">Film Folder · Label Tool</div>
+  <h1>Film Folder <em>→</em> 4&times;3 Labels</h1>
+  <p class="lede">Type a RUN&nbsp;#, DIE&nbsp;#, and NOTES to build a 4&Prime;&times;3&Prime; label &mdash; or pull rows straight from a Google&nbsp;Sheet. Print to a label printer or download a print-ready PDF.</p>
+
+  <!-- STEP 1 — label fields -->
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <label>Label content</label>
+      <div class="field-grid">
+        <div class="field">
+          <span class="field-label">Run #</span>
+          <input type="text" id="run" placeholder="e.g. 1499" autocomplete="off">
+        </div>
+        <div class="field">
+          <span class="field-label">Die #</span>
+          <input type="text" id="die" placeholder="e.g. 5006" autocomplete="off">
+        </div>
+        <div class="field full">
+          <span class="field-label">Notes</span>
+          <textarea id="notes" placeholder="e.g. 05-412 (84),"></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <button class="btn small" id="addBtn">Add to queue</button>
+        <button class="btn small ghost" id="updateBtn" style="display:none">Save changes</button>
+        <button class="btn small ghost" id="clearFields">Clear</button>
+        <span class="status" id="fieldStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 — live preview -->
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <label>Preview <span class="hint">— live 4&Prime;&times;3&Prime; label</span></label>
+      <div class="preview-wrap">
+        <div class="label" id="label">
+          <div class="line"><span class="tag">RUN #</span><span class="val" id="pvRun">1499</span></div>
+          <div class="rule"></div>
+          <div class="line"><span class="tag">DIE #</span><span class="val" id="pvDie">5006</span></div>
+          <div class="notes-head">NOTES</div>
+          <div class="notes-body" id="pvNotes">05-412 (84),</div>
+        </div>
+        <div class="side">
+          <label style="display:block;margin-bottom:8px">Queue <span class="hint">— all labels to print</span></label>
+          <ul class="queue" id="queue"><li class="queue-empty">Nothing queued. Add a label above, or load a sheet in step&nbsp;3.</li></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 — google sheet -->
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <label>Pull from Google Sheet <span class="hint">— optional</span></label>
+      <div class="row">
+        <input type="text" id="sheetUrl" class="grow" placeholder="Paste a Google Sheet link…" autocomplete="off">
+        <button class="btn small" id="loadSheet">Load rows</button>
+        <span class="status" id="sheetStatus"></span>
+      </div>
+      <details class="help">
+        <summary>How the sheet needs to be set up</summary>
+        <ol>
+          <li>The sheet must be viewable by anyone with the link (<strong>Share → General access → Anyone with the link → Viewer</strong>), or published to the web.</li>
+          <li>Give the first row headers containing the words <code>run</code>, <code>die</code>, and <code>notes</code> (any order, extra columns are ignored). If no such headers are found, the first three columns are used as Run / Die / Notes.</li>
+          <li>Each remaining row becomes one label added to the queue.</li>
+          <li>Paste the normal sheet URL, or a <em>File → Share → Publish to web → CSV</em> link.</li>
+        </ol>
+      </details>
+    </div>
+  </div>
+
+  <!-- STEP 4 — output -->
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <label>Print or download</label>
+      <div class="controls">
+        <button class="btn" id="printBtn" disabled>Print Labels</button>
+        <button class="btn ghost" id="pdfBtn" disabled>Download PDF</button>
+        <button class="btn ghost" id="resetBtn">Reset all</button>
+        <span class="status" id="outStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <span>4&Prime; &times; 3&Prime; · 1 label per page</span>
+    <span>Runs locally · no upload</span>
+  </div>
+</div>
+
+<script>
+  // ---------- state ----------
+  let queue = [];            // [{run, die, notes}]
+  let editIndex = -1;        // index in queue currently being edited, or -1 for new
+
+  const $ = id => document.getElementById(id);
+  const runIn = $("run"), dieIn = $("die"), notesIn = $("notes");
+  const pvRun = $("pvRun"), pvDie = $("pvDie"), pvNotes = $("pvNotes");
+  const queueEl = $("queue");
+  const addBtn = $("addBtn"), updateBtn = $("updateBtn");
+  const printBtn = $("printBtn"), pdfBtn = $("pdfBtn");
+
+  // ---------- live preview ----------
+  function refreshPreview() {
+    pvRun.textContent = runIn.value.trim() || "—";
+    pvDie.textContent = dieIn.value.trim() || "—";
+    pvNotes.textContent = notesIn.value || "";
+  }
+  [runIn, dieIn, notesIn].forEach(el => el.addEventListener("input", refreshPreview));
+
+  // ---------- queue rendering ----------
+  function renderQueue() {
+    if (queue.length === 0) {
+      queueEl.innerHTML = '<li class="queue-empty">Nothing queued. Add a label above, or load a sheet in step&nbsp;3.</li>';
+    } else {
+      queueEl.innerHTML = queue.map((q, i) => `
+        <li class="${i === editIndex ? "active" : ""}" data-i="${i}">
+          <span class="q-main" data-edit="${i}">
+            <span class="q-run">RUN ${esc(q.run) || "—"}</span> ·
+            <span class="q-die">DIE ${esc(q.die) || "—"}</span>
+            ${q.notes ? `<span class="q-notes"> — ${esc(q.notes.replace(/\s+/g," ").slice(0,40))}${q.notes.length>40?"…":""}</span>` : ""}
+          </span>
+          <button class="mini-btn" data-del="${i}" title="Remove">&times;</button>
+        </li>`).join("");
+      queueEl.querySelectorAll("[data-edit]").forEach(el =>
+        el.addEventListener("click", () => loadIntoForm(+el.dataset.edit)));
+      queueEl.querySelectorAll("[data-del]").forEach(el =>
+        el.addEventListener("click", () => removeFromQueue(+el.dataset.del)));
+    }
+    const has = queue.length > 0;
+    printBtn.disabled = !has;
+    pdfBtn.disabled = !has;
+  }
+
+  function loadIntoForm(i) {
+    const q = queue[i];
+    runIn.value = q.run; dieIn.value = q.die; notesIn.value = q.notes;
+    editIndex = i;
+    addBtn.style.display = "none";
+    updateBtn.style.display = "";
+    refreshPreview(); renderQueue();
+    setStatus("fieldStatus", `Editing label ${i + 1}. Save changes when done.`);
+  }
+
+  function removeFromQueue(i) {
+    queue.splice(i, 1);
+    if (editIndex === i) resetForm();
+    else if (editIndex > i) editIndex--;
+    renderQueue();
+  }
+
+  function currentFields() {
+    return {
+      run: runIn.value.trim(),
+      die: dieIn.value.trim(),
+      notes: notesIn.value.replace(/\r/g, "")
+    };
+  }
+
+  function resetForm() {
+    editIndex = -1;
+    addBtn.style.display = "";
+    updateBtn.style.display = "none";
+    runIn.value = ""; dieIn.value = ""; notesIn.value = "";
+    refreshPreview();
+  }
+
+  addBtn.addEventListener("click", () => {
+    const f = currentFields();
+    if (!f.run && !f.die && !f.notes) {
+      setStatus("fieldStatus", "Enter something first.", "err");
+      return;
+    }
+    queue.push(f);
+    resetForm(); renderQueue();
+    setStatus("fieldStatus", `Added. ${queue.length} label${queue.length === 1 ? "" : "s"} queued.`, "ok");
+  });
+
+  updateBtn.addEventListener("click", () => {
+    if (editIndex < 0) return;
+    queue[editIndex] = currentFields();
+    setStatus("fieldStatus", `Saved label ${editIndex + 1}.`, "ok");
+    resetForm(); renderQueue();
+  });
+
+  $("clearFields").addEventListener("click", () => { resetForm(); setStatus("fieldStatus", ""); });
+
+  $("resetBtn").addEventListener("click", () => {
+    queue = []; resetForm(); renderQueue();
+    setStatus("fieldStatus", ""); setStatus("sheetStatus", ""); setStatus("outStatus", "");
+    $("sheetUrl").value = "";
+  });
+
+  // ---------- Google Sheet loading ----------
+  $("loadSheet").addEventListener("click", loadSheet);
+  $("sheetUrl").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); loadSheet(); } });
+
+  function buildCsvUrl(url) {
+    url = url.trim();
+    if (!url) return null;
+    // Already a published CSV
+    if (/output=csv/i.test(url)) return url;
+    // Extract the doc id
+    const idMatch = url.match(/\/spreadsheets\/d\/(?:e\/)?([a-zA-Z0-9-_]+)/);
+    if (!idMatch) return null;
+    const id = idMatch[1];
+    // Extract a gid if present (?gid= or #gid=)
+    const gidMatch = url.match(/[#&?]gid=(\d+)/);
+    const gid = gidMatch ? gidMatch[1] : "0";
+    return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&gid=${gid}`;
+  }
+
+  async function loadSheet() {
+    const raw = $("sheetUrl").value;
+    const csvUrl = buildCsvUrl(raw);
+    if (!csvUrl) {
+      setStatus("sheetStatus", "That doesn't look like a Google Sheet link.", "err");
+      return;
+    }
+    setStatus("sheetStatus", "Loading…");
+    try {
+      const res = await fetch(csvUrl);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const text = await res.text();
+      if (/<html/i.test(text)) throw new Error("The sheet isn't shared publicly (got a login page).");
+      const rows = parseCSV(text);
+      const added = rowsToLabels(rows);
+      if (added === 0) throw new Error("No data rows found.");
+      renderQueue();
+      setStatus("sheetStatus", `Loaded ${added} row${added === 1 ? "" : "s"} into the queue.`, "ok");
+    } catch (err) {
+      console.error(err);
+      setStatus("sheetStatus", "Couldn't load: " + err.message, "err");
+    }
+  }
+
+  // Map parsed CSV rows to label objects and append to the queue.
+  function rowsToLabels(rows) {
+    if (!rows.length) return 0;
+    const header = rows[0].map(h => h.toLowerCase().trim());
+    const find = (...keys) => header.findIndex(h => keys.some(k => h.includes(k)));
+    let iRun = find("run"), iDie = find("die"), iNotes = find("note");
+    let dataRows, ir, id, ino;
+    if (iRun === -1 && iDie === -1 && iNotes === -1) {
+      // No recognizable headers — treat every row as data, first 3 columns.
+      dataRows = rows; ir = 0; id = 1; ino = 2;
+    } else {
+      dataRows = rows.slice(1);
+      ir = iRun === -1 ? 0 : iRun;
+      id = iDie === -1 ? 1 : iDie;
+      ino = iNotes === -1 ? 2 : iNotes;
+    }
+    let count = 0;
+    for (const r of dataRows) {
+      const run = (r[ir] || "").trim();
+      const die = (r[id] || "").trim();
+      const notes = (r[ino] || "").trim();
+      if (!run && !die && !notes) continue;
+      queue.push({ run, die, notes });
+      count++;
+    }
+    return count;
+  }
+
+  // Minimal RFC-4180-ish CSV parser (handles quotes, commas, newlines).
+  function parseCSV(text) {
+    const rows = []; let row = [], field = "", inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQ = false;
+        } else field += c;
+      } else {
+        if (c === '"') inQ = true;
+        else if (c === ",") { row.push(field); field = ""; }
+        else if (c === "\n" || c === "\r") {
+          if (c === "\r" && text[i + 1] === "\n") i++;
+          row.push(field); field = "";
+          if (row.some(v => v !== "")) rows.push(row);
+          row = [];
+        } else field += c;
+      }
+    }
+    if (field !== "" || row.length) { row.push(field); if (row.some(v => v !== "")) rows.push(row); }
+    return rows;
+  }
+
+  // ---------- PDF generation (pdf-lib) — mirrors the template layout ----------
+  async function buildPdf(labels) {
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const doc = await PDFDocument.create();
+    const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+    const boldObl = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
+
+    const W = 4 * 72, H = 3 * 72;    // 288 x 216
+    const PAD = 14;
+    const BLACK = rgb(0, 0, 0), WHITE = rgb(1, 1, 1);
+
+    for (const lab of labels) {
+      const page = doc.addPage([W, H]);
+
+      // Outer border
+      page.drawRectangle({ x: 3, y: 3, width: W - 6, height: H - 6, borderColor: BLACK, borderWidth: 2 });
+
+      // --- RUN # row ---
+      drawTagValue(page, bold, "RUN #", lab.run, H - 34);
+      hrule(page, H - 44);
+      // --- DIE # row ---
+      drawTagValue(page, bold, "DIE #", lab.die, H - 74);
+      hrule(page, H - 84);
+
+      // --- NOTES header bar ---
+      const barTop = H - 88, barH = 18;
+      page.drawRectangle({ x: PAD, y: barTop - barH, width: W - PAD * 2, height: barH, color: BLACK });
+      const notesLabel = "NOTES";
+      const nlSize = 12;
+      const nlW = boldObl.widthOfTextAtSize(notesLabel, nlSize);
+      page.drawText(notesLabel, {
+        x: (W - nlW) / 2, y: barTop - barH + (barH - nlSize) / 2 + 1.5,
+        size: nlSize, font: boldObl, color: WHITE
+      });
+
+      // --- NOTES body box ---
+      const bodyTop = barTop - barH, bodyBottom = PAD;
+      page.drawRectangle({
+        x: PAD, y: bodyBottom, width: W - PAD * 2, height: bodyTop - bodyBottom,
+        borderColor: BLACK, borderWidth: 1
+      });
+      // Notes text — wrap manually
+      const noteSize = 12, lineH = 15, innerW = W - PAD * 2 - 12;
+      const lines = wrapText(bold, lab.notes || "", noteSize, innerW);
+      let ty = bodyTop - 6 - noteSize;
+      for (const ln of lines) {
+        if (ty < bodyBottom + 4) break;
+        page.drawText(ln, { x: PAD + 6, y: ty, size: noteSize, font: bold, color: BLACK });
+        ty -= lineH;
+      }
+    }
+    return await doc.save();
+
+    function drawTagValue(page, font, tag, value, baseline) {
+      const tagSize = 15;
+      page.drawText(tag, { x: PAD, y: baseline, size: tagSize, font, color: BLACK });
+      const tagW = font.widthOfTextAtSize(tag, tagSize);
+      const val = (value || "").trim();
+      if (val) {
+        let vSize = 24;
+        const maxW = W - PAD - (PAD + tagW + 12);
+        while (vSize > 12 && font.widthOfTextAtSize(val, vSize) > maxW) vSize -= 0.5;
+        // sit the big value so it visually aligns with the tag baseline
+        page.drawText(val, { x: PAD + tagW + 12, y: baseline - 2, size: vSize, font, color: BLACK });
+      }
+    }
+    function hrule(page, y) {
+      page.drawLine({ start: { x: PAD, y }, end: { x: W - PAD, y }, thickness: 1.5, color: BLACK });
+    }
+  }
+
+  // Wrap text to a max width, honoring explicit newlines.
+  function wrapText(font, text, size, maxW) {
+    const out = [];
+    for (const para of String(text).split("\n")) {
+      const words = para.split(/\s+/).filter(Boolean);
+      if (!words.length) { out.push(""); continue; }
+      let line = "";
+      for (const w of words) {
+        const test = line ? line + " " + w : w;
+        if (font.widthOfTextAtSize(test, size) <= maxW) line = test;
+        else {
+          if (line) out.push(line);
+          // hard-break a single over-long word
+          if (font.widthOfTextAtSize(w, size) > maxW) {
+            let chunk = "";
+            for (const ch of w) {
+              if (font.widthOfTextAtSize(chunk + ch, size) > maxW && chunk) { out.push(chunk); chunk = ch; }
+              else chunk += ch;
+            }
+            line = chunk;
+          } else line = w;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+
+  // ---------- output actions ----------
+  pdfBtn.addEventListener("click", async () => {
+    if (!queue.length) return;
+    setStatus("outStatus", "Generating PDF…");
+    try {
+      const bytes = await buildPdf(queue);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "film_folder_labels.pdf";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setStatus("outStatus", `Downloaded ${queue.length} label${queue.length === 1 ? "" : "s"}.`, "ok");
+    } catch (err) {
+      console.error(err);
+      setStatus("outStatus", "PDF failed: " + err.message, "err");
+    }
+  });
+
+  let printFrame = null, lastUrl = null;
+  printBtn.addEventListener("click", async () => {
+    if (!queue.length) return;
+    setStatus("outStatus", "Preparing print…");
+    try {
+      const bytes = await buildPdf(queue);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      if (printFrame) { try { printFrame.remove(); } catch (e) {} }
+      if (lastUrl) { try { URL.revokeObjectURL(lastUrl); } catch (e) {} }
+      lastUrl = url;
+      printFrame = document.createElement("iframe");
+      Object.assign(printFrame.style, { position: "fixed", right: 0, bottom: 0, width: 0, height: 0, border: 0 });
+      printFrame.src = url;
+      document.body.appendChild(printFrame);
+      printFrame.onload = () => setTimeout(() => {
+        try {
+          printFrame.contentWindow.focus();
+          printFrame.contentWindow.print();
+          setStatus("outStatus", "Print dialog opened. If nothing appeared, use Download PDF.");
+        } catch (err) {
+          window.open(url, "_blank");
+          setStatus("outStatus", "Opened the PDF in a new tab — press Ctrl/⌘ + P to print.");
+        }
+      }, 400);
+    } catch (err) {
+      console.error(err);
+      setStatus("outStatus", "Print failed: " + err.message, "err");
+    }
+  });
+
+  // ---------- helpers ----------
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function setStatus(id, msg, kind) {
+    const el = $(id);
+    el.textContent = msg;
+    el.className = "status" + (kind ? " " + kind : "");
+  }
+
+  // ---------- deep link from Google Sheet ----------
+  // A row's "Print" hyperlink opens this page with the row baked into the URL, e.g.
+  //   film_folder_label_generator.html?run=5686&die=multicam&notes=Bullet%20Electric&autoprint=1
+  // We populate the fields, queue the label, and (optionally) fire the print dialog.
+  function applyDeepLink() {
+    const p = new URLSearchParams(location.search);
+    const hasData = ["run", "die", "notes"].some(k => p.has(k));
+    if (!hasData) return false;
+    const run = (p.get("run") || "").trim();
+    const die = (p.get("die") || "").trim();
+    const notes = (p.get("notes") || "").replace(/\r/g, "");
+    queue.push({ run, die, notes });
+    renderQueue();
+    loadIntoForm(queue.length - 1);
+    setStatus("fieldStatus", "Loaded from Google Sheet — ready to print.", "ok");
+    if (p.get("autoprint") === "1" || p.get("print") === "1") {
+      const go = () => { if (!printBtn.disabled) printBtn.click(); };
+      // wait until pdf-lib is available, then trigger the print flow
+      let tries = 0;
+      (function wait() {
+        if (window.PDFLib) return setTimeout(go, 250);
+        if (tries++ > 40) return;         // ~10s ceiling
+        setTimeout(wait, 250);
+      })();
+    }
+    return true;
+  }
+
+  // ---------- init ----------
+  refreshPreview();
+  renderQueue();
+  applyDeepLink();
+</script>
+</body>
+</html>
